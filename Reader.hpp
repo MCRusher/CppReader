@@ -36,7 +36,7 @@ public:
 			Look = 0;
 			Look2 = ifs.get();
 			Line = 1;
-			Char = 1;
+			Char = 0;
 			return true;
 		}
 		return false;
@@ -50,7 +50,7 @@ public:
 			Look = 0;
 			Look2 = ifs.get();
 			Line = 1;
-			Char = 1;
+			Char = 0;
 			return true;
 		}
 		return false;
