@@ -1,122 +1,114 @@
 #pragma once
-
 #include "_reader.hpp"
+
 #include <fstream>
-#include <cstring>
-#include <new>
+#include <string>
 #include <cstdint>
+#include <sstream>
 
-class Reader : public _reader {
+template <typename CharT = char>
+class Reader : public reader_interface<CharT> {
 protected:
-    std::ifstream ifs;
-    std::string name;
-    int Look, Look2;
-    std::uint64_t Line, Char;
+    using rface = reader_interface<CharT>;
+    using NameString = typename rface::NameString;
+    using StringT = typename rface::StringT;
+    using EOFErr = typename rface::EOFErr;
+    static constexpr typename std::basic_ifstream<CharT>::int_type
+        EndOfField = std::basic_ifstream<CharT>::traits_type::eof();
+
+
+    std::basic_ifstream<CharT> ifs;
+    NameString name;
+    CharT Look;//undefined until first read
+    typename std::basic_ifstream<CharT>::int_type Look2;
+    //designed for extremes in either dimension
+    std::uintmax_t Char, Line;
 public:
-	///Opens the file with fname and initializes the reader object to a valid state.
-	///Can fail, should be checked with IsOpen.
-    Reader(char const * const fname)
-    : ifs(fname), name(fname), Look(0), Look2(0), Line(1), Char(0) {
-    	Look2 = ifs.get();
-    }
-    ///Opens the file with fname and initializes the reader object to a valid state.
-    ///Can fail, should be checked with IsOpen.
-    Reader(std::string const& fname)
-    : ifs(fname), name(fname), Look(0), Look2(0), Line(1), Char(0) {
-		Look2 = ifs.get();
-    }
-    ///Creates an uninitialized reader object which must be "Open"ed before use.
-    Reader(){}
-	///Opens the file with fname and initializes the reader object to a valid state.
-    ///@Returns true if file was opened successfully and reader was initialized.
-    bool Open(char const * fname)override{
-		ifs.open(fname);
-		if(ifs.is_open()){
-			name = fname;
-			Look = 0;
-			Look2 = ifs.get();
-			Line = 1;
-			Char = 0;
-			return true;
-		}
-		return false;
-    }
-    ///Opens the file with fname and initializes the reader object to a valid state.
-    ///@Returns true if file was opened successfully and reader was initialized.
-    bool Open(std::string const& fname)override{
-		ifs.open(fname);
-		if(ifs.is_open()){
-			name = fname;
-			Look = 0;
-			Look2 = ifs.get();
-			Line = 1;
-			Char = 0;
-			return true;
-		}
-		return false;
+    ///Copies filename and opens it.
+    ///peek() is undefined until read() is called.
+    ///@Returns true if file was opened successfully.
+    bool open(NameString const& fname) override{
+        ifs.open(fname);
+        if(!ifs.is_open())
+            return false;
+        name = fname;
+        Look2 = ifs.get();
+        Line = 1;
+        Char = 0;
+        return true;
     }
 
-	///@Returns true if the file has been opened,
-	///which also means the reader is in a valid state.
-    bool IsOpen()const override{
+    ///Copies filename and opens it, then reads one character.
+    ///Fails if Reader.open() fails or if file was empty.
+    ///The value of peek() is defined as the first CharT in the file.
+    bool openRead(NameString const& fname) override{
+        if(this->open(fname) && Look2 != EndOfField){
+            this->read();
+            return true;
+        }else return false;
+    }
+
+    ///@Returns true if the file is open.
+    bool isOpen()const override{
         return ifs.is_open();
     }
 
-	///@Returns true if file has zero length, else returns false.
-	///Should not be called on an uninitialized object.
-	///Modifies internal state and cannot be called as const.
-    bool IsEmpty()override{
-    	//checks if position is zero, which is impossible for a valid Reader
-    	//since Open&Constructors read a character
-		return ifs.tellg()<=0 /*&& ifs.peek() == std::ifstream::traits_type::eof()*/;
+    ///@Returns true if no characters are left to read.
+    bool atEOF()const override{
+        return Look2 == EndOfField;
     }
 
-	///Returns the name of the file exactly as opened.
-    std::string const& GetName()const override{
+    ///@Returns the filename as a string.
+    NameString const& getName()const override{
         return name;
     }
 
-	///@Returns the line position (1-indexed) of the file.
-    std::uint64_t GetLine()const override{
-		return Line;
+    ///@Returns the current line position of the reader.
+    std::uintmax_t getLine()const override{
+        return Line;
     }
 
-	///@Returns the character position (1-indexed) of the file, \
-				resets when line is changed.
-    std::uint64_t GetChar()const override{
-		return Char;
+    ///@Retruns the current CharT position of the current line.
+    std::uintmax_t getChar()const override{
+        return Char;
     }
 
-	///@Returns the last read char in the stream.
-	///Will be '\0' until Read is called for the first time.
-	///Also returns '\0' if the value is out of char range.
-    char Peek()const override{
-        return Look < 0 ? '\0' : Look;
-    }
-	///@Returns the next character to be read in the stream.
-	///Also returns '\0' if the value is out of char range.
-    char PeekNext()const override{
-        return Look2 < 0 ? '\0' : Look2;
+    ///@Returns the last read CharT value.
+    CharT peek()const override{
+        return Look;
     }
 
-	///@Returns true if the stream has reached EOF.
-    bool AtEOF()const override{ return Look==-1; }
-	///@Returns true if the stream will reach EOF on the next call to Read.
-    bool AtEOFNext()const override{ return Look2==-1; }
-	///@Returns the next character in the stream and updates the PeekNext character, \
-				or '\0' if the value is out of char range.
-	///@Throws a protected EOFErr exception when called when |AtEOF()|, since this indicates an over-reading bug.
-    char Read()override{
-        //if both are EOF(-1) then over-reading will occur, which is likely to cause bugs in the program.
-        if(Look==-1 && Look2==-1)
+    ///@Returns the next CharT value to be read.
+    ///@Fails if at EOF (no chars to peek)
+    CharT peekNext()const override{
+        if(Look2==EndOfField)
+            throw EOFErr();
+        return Look2;
+    }
+
+    ///@Returns the next CharT in the file
+    ///@Fails if at EOF (no chars to read)
+    CharT read() override{
+        if(Look2 == EndOfField)
             throw EOFErr();
         Look = Look2;
-        if(Look=='\n'){
+        Look2 = ifs.get();
+        if(StringT(1,Look)==StringT(1,'\n')){
             ++Line;
             Char = 0;
         }else ++Char;
-        Look2 = ifs.get();
-        return Look < 0 ? 0 : Look;
+        return Look;
+    }
+
+    ///@Returns a string of the next characters until delim or at EOF.
+    ///String is empty if at EOF (no chars to read)
+    StringT readUntil(CharT delim) override{
+        std::basic_ostringstream<CharT> buf;
+        while(Look2!=EndOfField){
+            CharT c = this->read();
+            if(c==delim) break;
+            buf.put(c);
+        }
+        return buf.str();
     }
 };
-
