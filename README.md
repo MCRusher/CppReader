@@ -12,4 +12,4 @@ StackedReader - Intended for C-style import systems where new files can be splic
 ~~Update: It's a pretty bad version of the implementation, and has some bugs.~~
 
 Update2: It's a much better version of the implementation, and should be a lot more straightforward and less buggy.
-- The main concern for bugs is in the StackedReader, which is much more complex.
+- The main concern for bugs is in the StackedReader implementation, which is much more complex.
